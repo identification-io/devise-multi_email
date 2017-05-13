@@ -1,65 +1,46 @@
 module Devise
   module Models
     module EmailAuthenticatable
-      USER_ASSOCIATION = :user
-
       def devise_scope
-        user_association = self.class.reflect_on_association(USER_ASSOCIATION)
-        if user_association
-          user_association.class_name.constantize
-        else
-          raise "#{self.class.name}: Association :#{USER_ASSOCIATION} not found: Have you declared that ?"
-        end
+        self.class._multi_email_parent_association_class
       end
     end
 
     module MultiEmailAuthenticatable
       extend ActiveSupport::Concern
-      EMAILS_ASSOCIATION = :emails
 
       included do
-        devise :database_authenticatable
+        include Devise::MultiEmail::ParentModelExtensions
 
         attr_accessor :current_login_email
 
-        email_class.send :include, EmailAuthenticatable
+        devise :database_authenticatable
+
+        include AuthenticatableExtensions
       end
 
       def self.required_fields(klass)
         []
       end
 
-      # Gets the primary email record.
-      def primary_email_record
-        valid_emails = emails.each.select do |email_record|
-          !email_record.destroyed? && !email_record.marked_for_destruction?
+      module AuthenticatableExtensions
+        extend ActiveSupport::Concern
+
+        included do
+          _multi_email_emails_association_class.send :include, EmailAuthenticatable
         end
 
-        result = valid_emails.find(&:primary?)
-        result ||= valid_emails.first
-        result
-      end
+        delegate :skip_confirmation!, to: :_multi_email_find_primary_email, allow_nil: false
 
-      # Gets the primary email address of the user.
-      def email
-        primary_email_record.try(:email)
-      end
-
-      # Sets the default email address of the user.
-      def email=(email)
-        record = primary_email_record
-        if email
-          record ||= emails.build
-          record.email = email
-          record.primary = true
-        elsif email.nil? && record
-          record.mark_for_destruction
+        # Gets the primary email address of the user.
+        def email
+          _multi_email_find_primary_email.try(:email)
         end
-      end
 
-      # skip_confirmation on the users primary email
-      def skip_confirmation!
-        primary_email_record.skip_confirmation!
+        # Sets the default email address of the user.
+        def email=(new_email)
+          _multi_email_change_email_to(new_email)
+        end
       end
 
       module ClassMethods
@@ -69,9 +50,9 @@ module Devise
 
           if email && email.is_a?(String)
             conditions = filtered_conditions.to_h.merge(opts).
-              reverse_merge(emails: { email: email })
+              reverse_merge(_multi_email_reflect_on_emails_association.table_name => { email: email })
 
-            resource = joins(:emails).find_by(conditions)
+            resource = joins(_multi_email_emails_association_name).find_by(conditions)
             resource.current_login_email = email if resource.respond_to?(:current_login_email=)
             resource
           else
@@ -79,17 +60,8 @@ module Devise
           end
         end
 
-        def email_class
-          email_association = reflect_on_association(EMAILS_ASSOCIATION)
-          if email_association
-            email_association.class_name.constantize
-          else
-            raise "#{self.class.name}: Association :#{EMAILS_ASSOCIATION} not found: It might because your declaration is after `devise :multi_email_confirmable`."
-          end
-        end
-        
         def find_by_email(email)
-          joins(:emails).where(emails: {email: email.downcase}).first
+          joins(_multi_email_emails_association_name).where(_multi_email_reflect_on_emails_association.table_name => {email: email.downcase}).first
         end
       end
     end

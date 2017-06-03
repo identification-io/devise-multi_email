@@ -1,3 +1,5 @@
+require 'devise/multi_email/parent_model_extensions'
+
 module Devise
   module Models
     module EmailValidatable
@@ -34,7 +36,7 @@ module Devise
 
         after_validation :propagate_email_errors
 
-        _multi_email_emails_association_class.send :include, EmailValidatable
+        multi_email_association.include_module(EmailValidatable)
 
         devise_modules << :validatable
       end
@@ -58,13 +60,9 @@ module Devise
     private
 
       def propagate_email_errors
-        email_error_key = self.class._multi_email_emails_association_name
-
-        if respond_to?("#{email_error_key}_attributes=")
-          email_error_key = "#{email_error_key}.email".to_sym
-        end
-
-        email_errors = errors.delete(email_error_key) || []
+        email_error_key = self.class.multi_email_association.name
+        email_errors = errors.delete(email_error_key) ||
+                       errors.delete("#{email_error_key}.email".to_sym) || []
 
         email_errors.each do |error|
           errors.add(:email, error)
@@ -78,7 +76,7 @@ module Devise
                        :validates_confirmation_of, :validates_length_of].freeze
 
         def assert_validations_api!(base) #:nodoc:
-          unavailable_validations = VALIDATIONS.select { |v| !base.respond_to?(v) }
+          unavailable_validations = VALIDATIONS.select{ |v| !base.respond_to?(v) }
 
           unless unavailable_validations.empty?
             raise "Could not use :validatable module since #{base} does not respond " <<

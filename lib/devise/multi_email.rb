@@ -3,6 +3,7 @@ require 'devise'
 
 module Devise
   module MultiEmail
+
     def self.configure(&block)
       yield self
     end

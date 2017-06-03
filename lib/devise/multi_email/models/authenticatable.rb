@@ -44,7 +44,6 @@ module Devise
         def email=(new_email)
           multi_email.change_primary_email_to(new_email, force_primary: true)
         end
-      end
 
       module AuthenticatableAutosaveExtensions
         extend ActiveSupport::Concern
